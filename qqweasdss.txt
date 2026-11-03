@@ -1,0 +1,93 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local HarvestEvent = ReplicatedStorage:FindFirstChild("HarvestEvent")
+if not HarvestEvent then
+ HarvestEvent = Instance.new("RemoteEvent")
+ HarvestEvent.Name = "HarvestEvent"
+ HarvestEvent.Parent = ReplicatedStorage
+end
+
+Players.PlayerAdded:Connect(function(player)
+ local leaderstats = Instance.new("Folder")
+ leaderstats.Name = "leaderstats"
+ leaderstats.Parent = player
+
+ local nectar = Instance.new("IntValue")
+ nectar.Name = "Nectar"
+ nectar.Value = 0
+ nectar.Parent = leaderstats
+
+ local backpack = Instance.new("IntValue")
+ backpack.Name = "Backpack"
+ backpack.Value = 0
+ backpack.Parent = player
+
+ local maxCapacity = Instance.new("IntValue")
+ maxCapacity.Name = "MaxCapacity"
+ maxCapacity.Value = 300
+ maxCapacity.Parent = player
+
+ player:SetAttribute("ComboCount", 0)
+ player:SetAttribute("LastHarvestTime", 0)
+end)
+
+HarvestEvent.OnServerEvent:Connect(function(player, toolPower, harvestRadius)
+ toolPower = toolPower or 2
+ harvestRadius = harvestRadius or 6
+
+ local character = player.Character
+ if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+
+ local rootPart = character.HumanoidRootPart
+ local backpack = player:FindFirstChild("Backpack")
+ local maxCapacity = player:FindFirstChild("MaxCapacity")
+
+ if not backpack or not maxCapacity then return end
+ if backpack.Value >= maxCapacity.Value then return end
+
+ local currentTime = workspace:GetServerTimeNow()
+ local lastTime = player:GetAttribute("LastHarvestTime") or 0
+ local combo = player:GetAttribute("ComboCount") or 0
+
+ if currentTime - lastTime <= 3.5 then
+  combo = math.min(combo + 1, 50)
+ else
+  combo = 1
+ end
+
+ player:SetAttribute("ComboCount", combo)
+ player:SetAttribute("LastHarvestTime", currentTime)
+
+ local comboMultiplier = 1 + (combo * 0.02)
+ local isCritical = math.random(1, 100) <= 15
+ local critMultiplier = isCritical and 2 or 1
+
+ local overlapParams = OverlapParams.new()
+ overlapParams.FilterType = Enum.RaycastFilterType.Include
+
+ local fieldsFolder = workspace:FindFirstChild("Fields")
+ if fieldsFolder then
+  overlapParams.FilterDescendantsInstances = {fieldsFolder}
+ end
+
+ local nearbyParts = workspace:GetPartBoundsInRadius(rootPart.Position, harvestRadius, overlapParams)
+ local totalHarvested = 0
+
+ for _, part in ipairs(nearbyParts) do
+  if part:GetAttribute("HasNectar") == true or part.Name == "FlowerPatch" then
+   totalHarvested += math.floor(toolPower * comboMultiplier * critMultiplier)
+   
+   part.Size = part.Size - Vector3.new(0, 0.1, 0)
+   task.delay(3, function()
+    part.Size = part.Size + Vector3.new(0, 0.1, 0)
+   end)
+  end
+ end
+
+ if totalHarvested == 0 then
+  totalHarvested = math.floor(toolPower * comboMultiplier * critMultiplier)
+ end
+
+ backpack.Value = math.min(backpack.Value + totalHarvested, maxCapacity.Value)
+end)
